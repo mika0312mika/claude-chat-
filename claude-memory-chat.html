@@ -1075,6 +1075,7 @@ async function sendMessage() {
   // Add to history
   chatHistory.push({ role: 'user', content: text });
   saveChatHistory();
+  showToast(`已保存 ${chatHistory.length} 条`);
   appendMessage('user', text, false);
   msgCount++;
 
@@ -1427,8 +1428,13 @@ function debugStorage() {
 function saveChatHistory() {
   ghWrite('data/chat_history.json', chatHistory, chatHistorySha).then(async () => {
     const r = await ghRead('data/chat_history.json');
-    if (r) chatHistorySha = r.sha;
-  });
+    if (r) {
+      chatHistorySha = r.sha;
+      showToast(`✓ 已同步到GitHub ${chatHistory.length}条`);
+    } else {
+      showToast('⚠️ GitHub同步失败');
+    }
+  }).catch(e => showToast('⚠️ 保存出错: ' + e.message));
 }
 
 async function loadChatHistory() {
