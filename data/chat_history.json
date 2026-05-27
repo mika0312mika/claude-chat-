@@ -2,5 +2,9 @@
   {
     "role": "user",
     "content": "早上好"
+  },
+  {
+    "role": "assistant",
+    "content": "早上好！☀️ 今天有什么我可以帮你的吗？"
   }
 ]
