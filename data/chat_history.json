@@ -2,5 +2,9 @@
   {
     "role": "user",
     "content": "早呀"
+  },
+  {
+    "role": "assistant",
+    "content": "早呀！今天是个周四，周末快到了 😊 有什么我可以帮你的吗？"
   }
 ]
