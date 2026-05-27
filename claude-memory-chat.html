@@ -728,14 +728,20 @@ async function ghRead(path) {
     });
     if (!resp.ok) return null;
     const j = await resp.json();
-    return { content: JSON.parse(atob(j.content.replace(/\n/g,''))), sha: j.sha };
+    const binStr = atob(j.content.replace(/\n/g, ''));
+    const bytes = Uint8Array.from(binStr, c => c.charCodeAt(0));
+    const json = new TextDecoder().decode(bytes);
+    return { content: JSON.parse(json), sha: j.sha };
   } catch { return null; }
 }
 
 async function ghWrite(path, data, sha) {
   const token = getGHToken();
   if (!token) return;
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+  const json = JSON.stringify(data, null, 2);
+  const bytes = new TextEncoder().encode(json);
+  const binStr = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+  const content = btoa(binStr);
   const body = { message: `update ${path}`, content };
   if (sha) body.sha = sha;
   try {
