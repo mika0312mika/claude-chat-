@@ -705,7 +705,6 @@
 const DEFAULT_API_KEY = 'sk-KNeYAtqCRw4yPMUmG5AJGPyUjSsEvTLBuc6a13nc0phVz58I';
 const DEFAULT_BASE_URL = 'https://cc.midlight.top';
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
-const MEMORY_KEY = 'claude_memories';
 const SETTINGS_KEY = 'claude_chat_settings';
 
 const CATEGORY_NAMES = {
@@ -749,14 +748,6 @@ function loadSettingsUI() {
 }
 
 // ===== MEMORIES =====
-function getMemories() {
-  try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || '[]'); }
-  catch { return []; }
-}
-function saveMemories(mems) {
-  localStorage.setItem(MEMORY_KEY, JSON.stringify(mems));
-  updateMemBadge();
-}
 function addMemory(mem) {
   const mems = getMemories();
   mem.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1391,38 +1382,103 @@ function openProfileModal() {
 }
 
 function debugStorage() {
-  const history = localStorage.getItem('claude_chat_history');
-  const memories = localStorage.getItem('claude_memories');
-  alert(`chatHistory变量: ${chatHistory.length}条\nlocalStorage历史: ${history ? JSON.parse(history).length + '条' : 'null'}\n记忆库: ${memories ? JSON.parse(memories).length + '条' : 'null'}`);
+  dbGet('chat_history').then(history => {
+    dbGet('memories').then(memories => {
+      alert(`chatHistory变量: ${chatHistory.length}条\nIndexedDB历史: ${history ? history.length + '条' : 'null'}\n记忆库: ${memories ? memories.length + '条' : 'null'}`);
+    });
+  });
+}
+
+// ===== INDEXEDDB STORAGE =====
+let db = null;
+
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('claude_app', 1);
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('store')) {
+        d.createObjectStore('store');
+      }
+    };
+    req.onsuccess = (e) => { db = e.target.result; resolve(); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbSet(key, value) {
+  return new Promise((resolve) => {
+    if (!db) { resolve(); return; }
+    const tx = db.transaction('store', 'readwrite');
+    tx.objectStore('store').put(value, key);
+    tx.oncomplete = resolve;
+    tx.onerror = resolve;
+  });
+}
+
+function dbGet(key) {
+  return new Promise((resolve) => {
+    if (!db) { resolve(null); return; }
+    const tx = db.transaction('store', 'readonly');
+    const req = tx.objectStore('store').get(key);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => resolve(null);
+  });
 }
 
 // ===== CHAT HISTORY PERSISTENCE =====
-const CHAT_HISTORY_KEY = 'claude_chat_history';
-
 function saveChatHistory() {
-  localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(chatHistory));
+  dbSet('chat_history', chatHistory);
+  // 同时备份到 localStorage
+  try { localStorage.setItem('claude_chat_history', JSON.stringify(chatHistory)); } catch {}
 }
 
-function loadChatHistory() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
-    if (!Array.isArray(saved)) return;
-    chatHistory = saved;
-    // 重建界面气泡
-    const msgs = document.getElementById('messages');
-    msgs.innerHTML = '';
-    for (const m of chatHistory) {
-      const role = m.role === 'user' ? 'user' : 'claude';
-      appendMessage(role, m.content, false);
-    }
-  } catch {}
+async function loadChatHistory() {
+  let saved = await dbGet('chat_history');
+  // 如果 IndexedDB 没有，尝试从 localStorage 恢复
+  if (!saved || !saved.length) {
+    try {
+      const ls = localStorage.getItem('claude_chat_history');
+      if (ls) saved = JSON.parse(ls);
+    } catch {}
+  }
+  if (!Array.isArray(saved) || !saved.length) return;
+  chatHistory = saved;
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = '';
+  for (const m of chatHistory) {
+    const role = m.role === 'user' ? 'user' : 'claude';
+    appendMessage(role, m.content, false);
+  }
+}
+
+// 覆盖记忆库的读写，也用 IndexedDB
+const MEMORY_KEY = 'claude_memories';
+function getMemories() {
+  try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveMemories(mems) {
+  localStorage.setItem(MEMORY_KEY, JSON.stringify(mems));
+  dbSet('memories', mems);
+  updateMemBadge();
+}
+async function loadMemoriesFromDB() {
+  const saved = await dbGet('memories');
+  if (Array.isArray(saved) && saved.length) {
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(saved));
+    updateMemBadge();
+  }
 }
 
 // ===== INIT =====
 loadSettingsUI();
-updateMemBadge();
 applyProfile();
-loadChatHistory();
+initDB().then(async () => {
+  await loadMemoriesFromDB();
+  updateMemBadge();
+  await loadChatHistory();
+});
 
 // ===== PROACTIVE MESSAGING =====
 async function checkProactiveMessage() {
