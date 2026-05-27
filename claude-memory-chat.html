@@ -650,6 +650,10 @@
         <input type="color" id="bgColor2" value="#EDE9FF">
       </div>
       <div class="setting-row">
+        <label>GitHub Token（用于保存聊天记录）</label>
+        <input type="password" id="ghTokenInput" placeholder="ghp_…">
+      </div>
+      <div class="setting-row">
         <label>API 密钥</label>
         <input type="password" id="apiKeyInput" placeholder="sk-…">
       </div>
@@ -708,14 +712,19 @@ const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const SETTINGS_KEY = 'claude_chat_settings';
 
 // ===== GITHUB STORAGE =====
-const GH_TOKEN = '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';
 const GH_REPO = 'mika0312mika/claude-chat-';
 const GH_API = 'https://api.github.com';
 
+function getGHToken() {
+  return localStorage.getItem('gh_token') || '';
+}
+
 async function ghRead(path) {
+  const token = getGHToken();
+  if (!token) return null;
   try {
     const resp = await fetch(`${GH_API}/repos/${GH_REPO}/contents/${path}`, {
-      headers: { 'Authorization': `token ${GH_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' }
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
     });
     if (!resp.ok) return null;
     const j = await resp.json();
@@ -724,20 +733,26 @@ async function ghRead(path) {
 }
 
 async function ghWrite(path, data, sha) {
+  const token = getGHToken();
+  if (!token) return;
   const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
   const body = { message: `update ${path}`, content };
   if (sha) body.sha = sha;
   try {
-    await fetch(`${GH_API}/repos/${GH_REPO}/contents/${path}`, {
+    const resp = await fetch(`${GH_API}/repos/${GH_REPO}/contents/${path}`, {
       method: 'PUT',
       headers: {
-        'Authorization': `token ${GH_TOKEN}`,
+        'Authorization': `token ${token}`,
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(body)
     });
-  } catch {}
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.message);
+    }
+  } catch(e) { throw e; }
 }
 
 let chatHistorySha = null;
@@ -771,6 +786,8 @@ function getSettings() {
 function saveSettings() {
   const key = document.getElementById('apiKeyInput').value.trim();
   const model = document.getElementById('modelInput').value.trim();
+  const ghToken = document.getElementById('ghTokenInput').value.trim();
+  if (ghToken) localStorage.setItem('gh_token', ghToken);
   localStorage.setItem(SETTINGS_KEY, JSON.stringify({
     apiKey: key || DEFAULT_API_KEY,
     model: model || DEFAULT_MODEL
@@ -781,6 +798,10 @@ function loadSettingsUI() {
   const s = getSettings();
   document.getElementById('apiKeyInput').value = s.apiKey;
   document.getElementById('modelInput').value = s.model;
+  const ghToken = localStorage.getItem('gh_token') || '';
+  if (document.getElementById('ghTokenInput')) {
+    document.getElementById('ghTokenInput').value = ghToken ? '••••••••' : '';
+  }
 }
 
 // ===== MEMORIES =====
