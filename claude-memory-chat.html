@@ -582,6 +582,7 @@
     <div class="action-row">
       <button class="small-btn" onclick="clearChat()">清空对话</button>
       <button class="small-btn" onclick="extractMemories()">✨ 提炼记忆</button>
+      <button class="small-btn" onclick="debugStorage()" style="color:#E05555">🔍 调试</button>
       <select id="thinkingSelect" class="small-btn" style="flex:1.2">
         <option value="0">不思考</option>
         <option value="1000">轻度思考</option>
@@ -1387,6 +1388,12 @@ function openProfileModal() {
   setTimeout(() => {
     document.querySelector('.settings-area')?.scrollIntoView({ behavior: 'smooth' });
   }, 100);
+}
+
+function debugStorage() {
+  const history = localStorage.getItem('claude_chat_history');
+  const memories = localStorage.getItem('claude_memories');
+  alert(`chatHistory变量: ${chatHistory.length}条\nlocalStorage历史: ${history ? JSON.parse(history).length + '条' : 'null'}\n记忆库: ${memories ? JSON.parse(memories).length + '条' : 'null'}`);
 }
 
 // ===== CHAT HISTORY PERSISTENCE =====
