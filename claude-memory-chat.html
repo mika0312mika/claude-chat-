@@ -1452,16 +1452,19 @@ function debugStorage() {
 }
 
 // ===== CHAT HISTORY PERSISTENCE =====
-function saveChatHistory() {
-  ghWrite('data/chat_history.json', chatHistory, chatHistorySha).then(async () => {
-    const r = await ghRead('data/chat_history.json');
-    if (r) {
-      chatHistorySha = r.sha;
-      showToast(`✓ 已同步到GitHub ${chatHistory.length}条`);
-    } else {
-      showToast('⚠️ GitHub同步失败');
-    }
-  }).catch(e => showToast('⚠️ 保存出错: ' + e.message));
+async function saveChatHistory() {
+  try {
+    // 每次写之前先拿最新 sha，避免冲突
+    const current = await ghRead('data/chat_history.json');
+    if (current) chatHistorySha = current.sha;
+    await ghWrite('data/chat_history.json', chatHistory, chatHistorySha);
+    // 写完再读一次更新 sha
+    const updated = await ghRead('data/chat_history.json');
+    if (updated) chatHistorySha = updated.sha;
+    showToast(`✓ 已同步 ${chatHistory.length} 条`);
+  } catch(e) {
+    showToast('⚠️ 保存出错: ' + e.message);
+  }
 }
 
 async function loadChatHistory() {
@@ -1483,12 +1486,19 @@ function getMemories() {
   try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || '[]'); }
   catch { return []; }
 }
+async function saveMemoriesGH(mems) {
+  try {
+    const current = await ghRead('data/memories.json');
+    if (current) memoriesSha = current.sha;
+    await ghWrite('data/memories.json', mems, memoriesSha);
+    const updated = await ghRead('data/memories.json');
+    if (updated) memoriesSha = updated.sha;
+  } catch {}
+}
+
 function saveMemories(mems) {
   localStorage.setItem(MEMORY_KEY, JSON.stringify(mems));
-  ghWrite('data/memories.json', mems, memoriesSha).then(async () => {
-    const r = await ghRead('data/memories.json');
-    if (r) memoriesSha = r.sha;
-  });
+  saveMemoriesGH(mems);
   updateMemBadge();
 }
 async function loadMemoriesFromGH() {
