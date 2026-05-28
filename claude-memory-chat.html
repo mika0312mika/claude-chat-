@@ -549,6 +549,70 @@
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* 每日签到 */
+  .checkin-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 300;
+    align-items: flex-end;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .checkin-overlay.open { display: flex; }
+  .checkin-card {
+    background: #FFFFFF;
+    border-radius: 24px 24px 0 0;
+    padding: 28px 24px 40px;
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .checkin-emoji { font-size: 40px; line-height: 1; }
+  .checkin-title { font-size: 20px; font-weight: 600; color: var(--text); }
+  .checkin-date { font-size: 13px; color: var(--text3); margin-bottom: 4px; }
+  .checkin-input {
+    width: 100%;
+    background: var(--bg3);
+    border: none;
+    border-radius: 14px;
+    padding: 12px 16px;
+    font-size: 15px;
+    color: var(--text);
+    resize: none;
+    outline: none;
+    font-family: inherit;
+    line-height: 1.5;
+    -webkit-appearance: none;
+  }
+  .checkin-btn {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    margin-top: 4px;
+  }
+  .checkin-btn:active { opacity: 0.85; }
+  .checkin-skip {
+    background: none;
+    border: none;
+    color: var(--text3);
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 4px;
+  }
 </style>
 </head>
 <body>
@@ -691,6 +755,18 @@
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
+
+<!-- 每日签到卡片 -->
+<div class="checkin-overlay" id="checkinOverlay">
+  <div class="checkin-card">
+    <div class="checkin-emoji" id="checkinEmoji">🌤️</div>
+    <div class="checkin-title">今天怎么样？</div>
+    <div class="checkin-date" id="checkinDate"></div>
+    <textarea class="checkin-input" id="checkinInput" placeholder="随便说几个字…" rows="3"></textarea>
+    <button class="checkin-btn" onclick="submitCheckin()">记下来</button>
+    <button class="checkin-skip" onclick="skipCheckin()">跳过</button>
+  </div>
+</div>
 
 <!-- Bottom Tab Bar -->
 <div class="bottom-tab-bar" id="bottomTabBar">
@@ -1209,19 +1285,19 @@ async function extractMemories() {
 
 async function extractFromPaste() {
   const text = document.getElementById('pasteText').value.trim();
-  if (!text) { showToast('请先粘贴对话内容'); return; }
+  if (!text) { showToast('请先粘贴内容'); return; }
   showToast('提炼中…');
   try {
-    const prompt = `从以下对话中提取值得长期记住的新信息，输出 JSON 数组，每项含 category（identity/personality/bond/about_you/feelings）、content、tags（数组），最多5条，只输出 JSON 不要其他文字：\n\n${text}`;
+    const prompt = `将以下内容转换为记忆条目，输出 JSON 数组，每项含 category（identity/personality/bond/about_you/feelings）、content（简洁的一句话）、tags（数组，2-4个关键词），数量不限，把所有信息都转换进去，只输出 JSON 不要其他文字。\n\ncategory 说明：identity=关系与身份，personality=说话方式与性格，bond=共同经历，about_you=关于用户，feelings=当下感受\n\n内容：\n\n${text}`;
     const result = await callAPIOnce([{ role: 'user', content: prompt }]);
     const items = parseMemoryJSON(result);
     if (items.length) {
       items.forEach(addMemory);
-      showToast(`已提炼 ${items.length} 条新记忆`);
+      showToast(`已导入 ${items.length} 条记忆`);
       renderMemoryList();
       document.getElementById('pasteText').value = '';
     } else {
-      showToast('未提取到新记忆');
+      showToast('未提取到记忆，请检查内容格式');
     }
   } catch (e) { showToast('提炼失败: ' + e.message); }
 }
@@ -1510,6 +1586,51 @@ async function loadMemoriesFromGH() {
   }
 }
 
+// ===== DAILY CHECKIN =====
+let todayMood = '';
+
+function getTodayKey() {
+  return 'checkin_' + new Date().toISOString().slice(0, 10);
+}
+
+function showCheckin() {
+  const key = getTodayKey();
+  if (localStorage.getItem(key)) return; // 今天已签到
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
+  document.getElementById('checkinDate').textContent = dateStr;
+  // 根据时间换 emoji
+  const h = now.getHours();
+  const emoji = h < 6 ? '🌙' : h < 12 ? '🌅' : h < 18 ? '☀️' : '🌆';
+  document.getElementById('checkinEmoji').textContent = emoji;
+  document.getElementById('checkinOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('checkinInput').focus(), 300);
+}
+
+function submitCheckin() {
+  const text = document.getElementById('checkinInput').value.trim();
+  if (!text) { skipCheckin(); return; }
+  const key = getTodayKey();
+  const dateStr = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
+  todayMood = text;
+  localStorage.setItem(key, text);
+  // 存进记忆库
+  addMemory({
+    category: 'about_you',
+    content: `${dateStr}，你说今天：${text}`,
+    tags: ['心情', '日记', dateStr]
+  });
+  document.getElementById('checkinOverlay').classList.remove('open');
+  document.getElementById('checkinInput').value = '';
+  showToast('已记下今天的心情 ✨');
+}
+
+function skipCheckin() {
+  const key = getTodayKey();
+  localStorage.setItem(key, '__skipped__');
+  document.getElementById('checkinOverlay').classList.remove('open');
+}
+
 // ===== INIT =====
 loadSettingsUI();
 applyProfile();
@@ -1519,7 +1640,20 @@ applyProfile();
   await loadChatHistory();
   updateMemBadge();
   showToast('加载完成');
+  // 加载完成后检查签到
+  setTimeout(showCheckin, 800);
 })();
+
+// 今天心情注入 system prompt
+const _origBuildSystemPrompt = buildSystemPrompt;
+function buildSystemPrompt(matched) {
+  let base = _origBuildSystemPrompt(matched);
+  const todayCheckin = localStorage.getItem(getTodayKey());
+  if (todayCheckin && todayCheckin !== '__skipped__') {
+    base += `\n\n用户今天的心情：${todayCheckin}`;
+  }
+  return base;
+}
 
 // ===== PROACTIVE MESSAGING =====
 async function checkProactiveMessage() {
