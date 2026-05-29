@@ -569,7 +569,8 @@ async function sendMessage() {
     bubble.innerHTML = renderMarkdown(fullReply);
     chatHistory.push({ role: 'assistant', content: fullReply });
   } catch (e) {
-    bubble.textContent = `[错误] ${e.message}`;
+    bubble.textContent = `[错误] ${e.message || e}`;
+    alert('错误详情: ' + (e.message || e));
     chatHistory.pop();
   }
 
